@@ -3,28 +3,29 @@ package main
 import (
 	"fmt"
 	"log"
+	"os"
 	"strconv"
 	"strings"
-
-	"agent/config"
-	"agent/models"
+	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
+
+	"agent/models"
 )
 
 var DB *gorm.DB
 
-func InitDB(url string) {
-	var err error
+func InitDB() {
+	dsn := os.Getenv("DATABASE_URL")
 
-	DB, err = gorm.Open(postgres.Open(url), &gorm.Config{})
+	var err error
+	DB, err = gorm.Open(postgres.Open(dsn), &gorm.Config{})
 	if err != nil {
 		log.Fatal("DB connect error:", err)
 	}
 
-	// auto table create
 	err = DB.AutoMigrate(&models.Expense{})
 	if err != nil {
 		log.Fatal("migration error:", err)
@@ -32,33 +33,36 @@ func InitDB(url string) {
 }
 
 func main() {
-	cfg := config.LoadConfig()
+	// timezone (Railway UTC fix)
+	loc, _ := time.LoadLocation(os.Getenv("TZ"))
+	time.Local = loc
 
-	InitDB(cfg.Database.URL)
+	InitDB()
 
-	bot, err := tgbotapi.NewBotAPI(cfg.Bot.Token)
+	botToken := os.Getenv("BOT_TOKEN")
+	if botToken == "" {
+		log.Fatal("BOT_TOKEN is empty")
+	}
+
+	bot, err := tgbotapi.NewBotAPI(botToken)
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	log.Println("Bot started as:", bot.Self.UserName)
 
 	commands := []tgbotapi.BotCommand{
 		{Command: "start", Description: "Xarajat kiritish"},
 		{Command: "daily", Description: "Bugungi statistika"},
 		{Command: "weekly", Description: "Shu hafta"},
 		{Command: "monthly", Description: "Shu oy"},
-		{Command: "lastweek", Description: "O‘tgan hafta"},
-		{Command: "lastmonth", Description: "O‘tgan oy"},
-		{Command: "lastyear", Description: "O‘tgan yil"},
 	}
 
-	cmdCfg := tgbotapi.NewSetMyCommands(commands...)
-	_, err = bot.Request(cmdCfg)
-	if err != nil {
-		log.Fatal(err)
-	}
+	bot.Request(tgbotapi.NewSetMyCommands(commands...))
 
 	u := tgbotapi.NewUpdate(0)
 	u.Timeout = 60
+
 	updates := bot.GetUpdatesChan(u)
 
 	for update := range updates {
@@ -83,15 +87,6 @@ func main() {
 
 		case "/monthly":
 			sendStats(bot, chatID, "month")
-
-		case "/lastweek":
-			sendStats(bot, chatID, "lastweek")
-
-		case "/lastmonth":
-			sendStats(bot, chatID, "lastmonth")
-
-		case "/lastyear":
-			sendStats(bot, chatID, "lastyear")
 
 		default:
 			ok, resp := saveExpense(chatID, text)
@@ -136,24 +131,12 @@ func sendStats(bot *tgbotapi.BotAPI, userID int64, period string) {
 	query := DB.Where("user_id = ?", userID)
 
 	switch period {
-
 	case "day":
 		query = query.Where("created_at >= NOW() - interval '1 day'")
-
 	case "week":
 		query = query.Where("created_at >= NOW() - interval '7 days'")
-
 	case "month":
 		query = query.Where("created_at >= NOW() - interval '1 month'")
-
-	case "lastweek":
-		query = query.Where("created_at BETWEEN NOW() - interval '14 days' AND NOW() - interval '7 days'")
-
-	case "lastmonth":
-		query = query.Where("created_at BETWEEN NOW() - interval '2 month' AND NOW() - interval '1 month'")
-
-	case "lastyear":
-		query = query.Where("created_at >= NOW() - interval '1 year'")
 	}
 
 	err := query.Order("created_at desc").Find(&expenses).Error
