@@ -2,7 +2,7 @@ bot:
   token: "8371372217:AAE-oAFcP8OqwDxaYW-rtc1D1lhtyQPg3Uo"
 
 database:
-  url: "postgres://postgres:yOouzhYAqrMwqrGmBUYAvSbOIFnNMKDS@localhost:5432/expenses"
+  url: "postgresql://${{PGUSER}}:${{POSTGRES_PASSWORD}}@${{RAILWAY_PRIVATE_DOMAIN}}:5432/${{PGDATABASE}}"
 
 app:
   timezone: "Asia/Tashkent"

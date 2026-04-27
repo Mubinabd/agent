@@ -1,37 +1,35 @@
 package config
 
 import (
-	"log"
 	"os"
-
-	"gopkg.in/yaml.v3"
 )
 
 type Config struct {
-	Bot struct {
-		Token string `yaml:"token"`
-	} `yaml:"bot"`
-
-	Database struct {
-		URL string `yaml:"url"`
-	} `yaml:"database"`
-
-	App struct {
-		Timezone string `yaml:"timezone"`
-	} `yaml:"app"`
+	BotToken string
+	DBUrl    string
+	TZ       string
 }
 
-func LoadConfig() *Config {
-	file, err := os.ReadFile("config.yaml")
-	if err != nil {
-		log.Fatal("config.yaml topilmadi:", err)
+func Load() Config {
+	return Config{
+		BotToken: mustGet("BOT_TOKEN"),
+		DBUrl:    mustGet("DATABASE_URL"),
+		TZ:       get("TZ", "Asia/Tashkent"),
 	}
+}
 
-	var cfg Config
-	err = yaml.Unmarshal(file, &cfg)
-	if err != nil {
-		log.Fatal("config parse error:", err)
+func mustGet(key string) string {
+	val := os.Getenv(key)
+	if val == "" {
+		panic(key + " is empty")
 	}
+	return val
+}
 
-	return &cfg
+func get(key, def string) string {
+	val := os.Getenv(key)
+	if val == "" {
+		return def
+	}
+	return val
 }
