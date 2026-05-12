@@ -34,13 +34,32 @@ type Config struct {
 var Cfg Config
 
 func loadConfig(path string) {
+	// config.yaml mavjud bo'lsa o'qi, bo'lmasa ENV dan ol (Railway, Docker)
 	data, err := os.ReadFile(path)
-	if err != nil {
-		log.Fatalf("❌ config.yaml o'qishda xato: %v", err)
+	if err == nil {
+		if err := yaml.Unmarshal(data, &Cfg); err != nil {
+			log.Fatalf("❌ config.yaml parse xato: %v", err)
+		}
+		log.Println("✅ Config config.yaml dan yuklandi")
+	} else {
+		log.Println("ℹ️  config.yaml topilmadi, ENV variables ishlatilmoqda")
 	}
-	if err := yaml.Unmarshal(data, &Cfg); err != nil {
-		log.Fatalf("❌ config.yaml parse xato: %v", err)
+
+	// ENV variables config.yaml ustidan yozadi (Railway priority)
+	if v := os.Getenv("BOT_TOKEN"); v != "" {
+		Cfg.BotToken = v
 	}
+	if v := os.Getenv("DATABASE_URL"); v != "" {
+		Cfg.DatabaseURL = v
+	}
+	if v := os.Getenv("OPENAI_API_KEY"); v != "" {
+		Cfg.OpenAIKey = v
+	}
+	if v := os.Getenv("TZ"); v != "" {
+		Cfg.Timezone = v
+	}
+
+	// Default qiymatlar
 	if Cfg.Budget.WeeklyLimit == 0 {
 		Cfg.Budget.WeeklyLimit = 1_000_000
 	}
@@ -50,6 +69,15 @@ func loadConfig(path string) {
 	if Cfg.Timezone == "" {
 		Cfg.Timezone = "Asia/Tashkent"
 	}
+
+	// Majburiy fieldlarni tekshirish
+	if Cfg.BotToken == "" {
+		log.Fatal("❌ BOT_TOKEN topilmadi (config.yaml yoki ENV)")
+	}
+	if Cfg.DatabaseURL == "" {
+		log.Fatal("❌ DATABASE_URL topilmadi (config.yaml yoki ENV)")
+	}
+
 	log.Println("✅ Config yuklandi")
 }
 
