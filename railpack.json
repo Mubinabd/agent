@@ -1,0 +1,10 @@
+{
+  "build": {
+    "builder": "RAILPACK",
+    "providers": ["go"]
+  },
+  "deploy": {
+    "startCommand": "./main",
+    "port": 8080
+  }
+}
