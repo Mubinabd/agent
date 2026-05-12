@@ -235,17 +235,13 @@ func startScheduler(loc *time.Location) {
 
 // ─── Voice → Text (OpenAI Whisper) ────────────────────────────────
 func transcribeVoice(fileID string) (string, error) {
-	// Telegram'dan fayl URL ni olish
 	fileConfig := tgbotapi.FileConfig{FileID: fileID}
 	file, err := Bot.GetFile(fileConfig)
 	if err != nil {
 		return "", fmt.Errorf("fayl olishda xato: %w", err)
 	}
 
-	fileURL := file.Link(Bot.Token)
-
-	// Faylni yuklab olish
-	resp, err := http.Get(fileURL)
+	resp, err := http.Get(file.Link(Bot.Token))
 	if err != nil {
 		return "", fmt.Errorf("fayl yuklashda xato: %w", err)
 	}
@@ -256,29 +252,26 @@ func transcribeVoice(fileID string) (string, error) {
 		return "", fmt.Errorf("fayl o'qishda xato: %w", err)
 	}
 
-	// OpenAI Whisper API ga yuborish
 	return whisperTranscribe(audioData)
 }
 
-// whisperTranscribe - OpenAI Whisper orqali audio → text
+// whisperTranscribe - OpenAI Whisper orqali audio → raw text
 func whisperTranscribe(audioData []byte) (string, error) {
 	openaiKey := os.Getenv("OPENAI_API_KEY")
 	if openaiKey == "" {
 		return "", fmt.Errorf("OPENAI_API_KEY topilmadi")
 	}
 
-	// multipart form data tayyorlash
 	pr, pw := io.Pipe()
 	mw := multipart.NewWriter(pw)
 
 	go func() {
 		defer pw.Close()
 		defer mw.Close()
-
 		fw, _ := mw.CreateFormFile("file", "voice.ogg")
 		fw.Write(audioData)
 		mw.WriteField("model", "whisper-1")
-		mw.WriteField("language", "uz") // O'zbek tili (yoki "ru")
+		// tilni belgilamaslik yaxshiroq — Whisper o'zi aniqlaydi
 	}()
 
 	req, err := http.NewRequest("POST", "https://api.openai.com/v1/audio/transcriptions", pr)
@@ -296,19 +289,74 @@ func whisperTranscribe(audioData []byte) (string, error) {
 	defer res.Body.Close()
 
 	body, _ := io.ReadAll(res.Body)
-
-	// JSON parse: {"text": "..."}
-	text := extractJSONText(string(body))
+	text := extractJSONField(string(body), "text")
 	if text == "" {
-		return "", fmt.Errorf("transkriptsiya bo'sh qaytdi: %s", string(body))
+		return "", fmt.Errorf("transkriptsiya bo'sh: %s", string(body))
 	}
 
+	log.Printf("🎤 Whisper raw: %q", text)
 	return text, nil
 }
 
-// Oddiy JSON text extractor ("text":"..." field)
-func extractJSONText(jsonStr string) string {
-	key := `"text":"`
+// parseExpenseFromText - erkin matndan summa va tavsifni ajratib oladi (GPT orqali)
+// Masalan: "o'n besh ming so'm ovqatga" → "15000 ovqat"
+func parseExpenseFromText(rawText string) (string, error) {
+	openaiKey := os.Getenv("OPENAI_API_KEY")
+	if openaiKey == "" {
+		return "", fmt.Errorf("OPENAI_API_KEY topilmadi")
+	}
+
+	prompt := fmt.Sprintf(`Quyidagi ovozli xabardan xarajat ma'lumotini ajrat.
+
+Matn: "%s"
+
+Faqat quyidagi formatda jавоб bер (boshqa hech narsa yozma):
+SUMMA TAVSIF
+
+Qoidalar:
+- SUMMA: faqat raqam (so'zlarni raqamga o'zgartir, masalan "o'n besh ming" = 15000)
+- TAVSIF: xarajat nomi (1-2 so'z, o'zbek tilida)
+- Agar xarajat ma'lumoti topilmasa, faqat "ERROR" yaz
+
+Misollar:
+"o'n besh ming so'm ovqatga" → 15000 ovqat
+"taksi uchun yigirma ming" → 20000 taksi  
+"ming besh yuz supermarketga" → 1500 supermarket`, rawText)
+
+	jsonBody := fmt.Sprintf(`{"model":"gpt-4o-mini","max_tokens":50,"messages":[{"role":"user","content":%q}]}`, prompt)
+
+	req, err := http.NewRequest("POST", "https://api.openai.com/v1/chat/completions",
+		strings.NewReader(jsonBody))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Authorization", "Bearer "+openaiKey)
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{Timeout: 15 * time.Second}
+	res, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer res.Body.Close()
+
+	body, _ := io.ReadAll(res.Body)
+	// GPT javobidan content ni olish
+	content := extractJSONField(string(body), "content")
+	content = strings.TrimSpace(content)
+
+	log.Printf("🤖 GPT parse: %q → %q", rawText, content)
+
+	if content == "" || content == "ERROR" {
+		return "", fmt.Errorf("xarajat ma'lumoti topilmadi")
+	}
+
+	return content, nil
+}
+
+// extractJSONField - JSON stringdan biror field qiymatini oladi
+func extractJSONField(jsonStr, field string) string {
+	key := fmt.Sprintf(`"%s":"`, field)
 	idx := strings.Index(jsonStr, key)
 	if idx == -1 {
 		return ""
@@ -444,8 +492,8 @@ func main() {
 	Bot.Request(tgbotapi.NewSetMyCommands(
 		tgbotapi.BotCommand{Command: "start", Description: "Xarajat kiritish"},
 		tgbotapi.BotCommand{Command: "daily", Description: "Bugungi statistika"},
-		tgbotapi.BotCommand{Command: "weekly", Description: "Haftalik statistika"},
-		tgbotapi.BotCommand{Command: "monthly", Description: "Oylik statistika"},
+		tgbotapi.BotCommand{Command: "weekly", Description: "Shu hafta"},
+		tgbotapi.BotCommand{Command: "monthly", Description: "Shu oy"},
 	))
 
 	startScheduler(loc)
@@ -463,20 +511,31 @@ func main() {
 
 		// ── Voice xabar ──────────────────────────────────────────
 		if update.Message.Voice != nil {
-			sendText(chatID, "🎤 Ovozli xabar qabul qilindi, matngа aylantirilmoqda...")
+			sendText(chatID, "🎤 Ovozli xabar qabul qilindi...")
 
-			transcribed, err := transcribeVoice(update.Message.Voice.FileID)
+			// 1-qadam: Whisper → raw text
+			rawText, err := transcribeVoice(update.Message.Voice.FileID)
 			if err != nil {
-				log.Printf("Voice transcribe xato (userID=%d): %v", chatID, err)
-				sendText(chatID, "❌ Ovozli xabarni o'qishda xato. Iltimos, matn kiriting.")
+				log.Printf("❌ Whisper xato (userID=%d): %v", chatID, err)
+				sendText(chatID, "❌ Ovozni o'qishda xato. Iltimos, matn kiriting.")
 				continue
 			}
 
-			log.Printf("🎤 Transkriptsiya (userID=%d): %s", chatID, transcribed)
-			sendText(chatID, fmt.Sprintf("🗒 Eshitildi: _%s_", transcribed))
+			// 2-qadam: GPT → "summa tavsif" formatiga o'tkazish
+			parsed, err := parseExpenseFromText(rawText)
+			if err != nil {
+				log.Printf("❌ GPT parse xato (userID=%d): %v", chatID, err)
+				// Foydalanuvchiga raw matnni ko'rsatib, qo'lda kiritishni so'raymiz
+				sendMarkdown(chatID, fmt.Sprintf(
+					"🎤 Eshitildi: _%s_\n\n❌ Xarajat formatini aniqlab bo'lmadi.\nIltimos qo'lda kiriting:\n`15000 ovqat`",
+					rawText,
+				))
+				continue
+			}
 
-			// Xarajat sifatida saqlashga urinish
-			ok, resp := saveExpense(chatID, transcribed)
+			// 3-qadam: bazaga saqlash
+			sendMarkdown(chatID, fmt.Sprintf("🎤 Eshitildi: _%s_", rawText))
+			ok, resp := saveExpense(chatID, parsed)
 			sendMarkdown(chatID, resp)
 			if ok {
 				checkBudgetLimit(chatID)
