@@ -1,5 +1,5 @@
-BOT_TOKEN=8371372217:AAE-oAFcP8OqwDxaYW-rtc1D1lhtyQPg3Uo
+BOT_TOKEN: 8371372217:AAE-oAFcP8OqwDxaYW-rtc1D1lhtyQPg3Uo
 
-TZ=Asia/Tashkent
+TZ: Asia/Tashkent
 
-DATABASE_URL=postgresql://postgres:yOouzhYAqrMwqrGmBUYAvSbOIFnNMKDS@postgres.railway.internal:5432/railway
+DATABASE_URL: postgresql://postgres:yOouzhYAqrMwqrGmBUYAvSbOIFnNMKDS@postgres.railway.internal:5432/railway
