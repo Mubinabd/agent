@@ -5,16 +5,16 @@ import (
 )
 
 type Config struct {
-	BotToken string
-	DBUrl    string
-	TZ       string
+	BotToken string `yaml:"bot_token"`
+	DBUrl    string `yaml:"db_url"`
+	TZ       string `yaml:"tz"`
 }
 
 func Load() Config {
 	return Config{
-		BotToken: mustGet("BOT_TOKEN"),
-		DBUrl:    mustGet("DATABASE_URL"),
-		TZ:       get("TZ", "Asia/Tashkent"),
+		BotToken: mustGet("bot_token"),
+		DBUrl:    mustGet("database_url"),
+		TZ:       get("tz", "Asia/Tashkent"),
 	}
 }
 
