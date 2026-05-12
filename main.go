@@ -21,8 +21,8 @@ import (
 
 // ─── Config ───────────────────────────────────────────────────────
 type Config struct {
-	BotToken    string `yaml:"bot_token"`
-	DatabaseURL string `yaml:"database_url"`
+	BotToken    string `yaml:"BOT_TOKEN"`
+	DatabaseURL string `yaml:"DATABASE_URL"`
 	OpenAIKey   string `yaml:"openai_api_key"`
 	Timezone    string `yaml:"timezone"`
 	Budget      struct {
