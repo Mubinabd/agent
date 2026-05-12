@@ -1,9 +1,5 @@
-BOT_TOKEN: "8371372217:AAE-oAFcP8OqwDxaYW-rtc1D1lhtyQPg3Uo"
-DATABASE_URL: "postgresql://postgres:yOouzhYAqrMwqrGmBUYAvSbOIFnNMKDS@postgres.railway.internal:5432/railway"
-openai_api_key: ""
-timezone: "Asia/Tashkent"
+BOT_TOKEN=8371372217:AAE-oAFcP8OqwDxaYW-rtc1D1lhtyQPg3Uo
 
-budget:
-  weekly_limit: 1000000
-  monthly_limit: 10000000
- 
+TZ=Asia/Tashkent
+
+DATABASE_URL=postgresql://postgres:yOouzhYAqrMwqrGmBUYAvSbOIFnNMKDS@postgres.railway.internal:5432/railway
